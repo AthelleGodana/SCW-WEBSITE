@@ -78,8 +78,8 @@ export default function Cart() {
                 </div>
 
                 <div className="card-body divide-y">
-                  {cartItems.map((item) => (
-                    <div key={item.id} className="py-4 flex gap-4">
+                  {cartItems.map((item: any) => (
+                    <div key={item._id || item.id} className="py-4 flex gap-4">
                       {/* Item Info */}
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900">Product ID: {item.productId}</h3>
@@ -99,7 +99,7 @@ export default function Cart() {
                           value={item.quantity}
                           onChange={(e) =>
                             updateItemMutation.mutate({
-                              cartItemId: item.id,
+                              cartItemId: item._id || item.id,
                               quantity: Math.max(1, parseInt(e.target.value) || 1),
                             })
                           }
@@ -107,7 +107,7 @@ export default function Cart() {
                           className="w-16 px-2 py-1 border border-gray-300 rounded text-center"
                         />
                         <button
-                          onClick={() => removeItemMutation.mutate({ cartItemId: item.id })}
+                          onClick={() => removeItemMutation.mutate({ cartItemId: item._id || item.id })}
                           className="p-2 text-red-600 hover:bg-red-50 rounded"
                         >
                           <Trash2 size={18} />

@@ -41,7 +41,7 @@ export const productsRouter = router({
   }),
 
   getById: publicProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.union([z.string(), z.number()]) }))
     .query(async ({ input }) => {
       try {
         const product = await getProductById(input.id);
@@ -80,7 +80,7 @@ export const productsRouter = router({
   update: createAdminProcedure(protectedProcedure)
     .input(
       z.object({
-        id: z.number(),
+        id: z.union([z.string(), z.number()]),
         data: productInputSchema.partial(),
       })
     )
@@ -112,7 +112,7 @@ export const productsRouter = router({
     }),
 
   delete: createAdminProcedure(protectedProcedure)
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.union([z.string(), z.number()]) }))
     .mutation(async ({ input }) => {
       try {
         const product = await getProductById(input.id);

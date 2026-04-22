@@ -11,7 +11,7 @@ import {
 } from "../db";
 
 const cartItemInputSchema = z.object({
-  productId: z.number(),
+  productId: z.union([z.string(), z.number()]),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   customizationSize: z.string().optional(),
   customizationColor: z.string().optional(),
@@ -21,7 +21,7 @@ const cartItemInputSchema = z.object({
 export const cartRouter = router({
   getCart: protectedProcedure.query(async ({ ctx }) => {
     try {
-      const items = await getCartItems(ctx.user.id);
+      const items = await getCartItems(String(ctx.user.id || ctx.user._id));
       return items;
     } catch (error) {
       console.error("Error fetching cart:", error);
@@ -46,8 +46,8 @@ export const cartRouter = router({
         }
 
         const result = await addCartItem({
-          userId: ctx.user.id,
-          productId: input.productId,
+          userId: String(ctx.user.id || ctx.user._id),
+          productId: String(input.productId),
           quantity: input.quantity,
           customizationSize: input.customizationSize,
           customizationColor: input.customizationColor,
@@ -65,14 +65,14 @@ export const cartRouter = router({
   updateItem: protectedProcedure
     .input(
       z.object({
-        cartItemId: z.number(),
+        cartItemId: z.string(),
         quantity: z.number().int().min(1, "Quantity must be at least 1"),
       })
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const items = await getCartItems(ctx.user.id);
-        const cartItem = items.find((item) => item.id === input.cartItemId);
+        const items = await getCartItems(String(ctx.user.id || ctx.user._id));
+        const cartItem = items.find((item: any) => String(item._id || item.id) === input.cartItemId);
 
         if (!cartItem) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Cart item not found" });
@@ -96,11 +96,11 @@ export const cartRouter = router({
     }),
 
   removeItem: protectedProcedure
-    .input(z.object({ cartItemId: z.number() }))
+    .input(z.object({ cartItemId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const items = await getCartItems(ctx.user.id);
-        const cartItem = items.find((item) => item.id === input.cartItemId);
+        const items = await getCartItems(String(ctx.user.id || ctx.user._id));
+        const cartItem = items.find((item: any) => String(item._id || item.id) === input.cartItemId);
 
         if (!cartItem) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Cart item not found" });
@@ -117,7 +117,7 @@ export const cartRouter = router({
 
   clear: protectedProcedure.mutation(async ({ ctx }) => {
     try {
-      await clearUserCart(ctx.user.id);
+      await clearUserCart(String(ctx.user.id || ctx.user._id));
       return { success: true };
     } catch (error) {
       console.error("Error clearing cart:", error);

@@ -1,213 +1,246 @@
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import {
-  InsertUser,
-  users,
-  InsertProduct,
-  products,
-  InsertOrder,
-  orders,
-  InsertOrderItem,
-  orderItems,
-  InsertCartItem,
-  cartItems,
-} from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { getDb, ObjectId } from "./mongodb";
+import { ENV } from "./_core/env";
 
-let _db: ReturnType<typeof drizzle> | null = null;
-
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
+// Types based on the previous Drizzle schema but adapted for MongoDB
+export interface User {
+  _id?: ObjectId;
+  id?: number; // Keep for compatibility if needed
+  openId: string;
+  name?: string | null;
+  email?: string | null;
+  loginMethod?: string | null;
+  role: "user" | "admin";
+  createdAt: Date;
+  updatedAt: Date;
+  lastSignedIn: Date;
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
+export interface Product {
+  _id?: ObjectId;
+  id?: number;
+  name: string;
+  description?: string | null;
+  price: string;
+  category: string;
+  image?: string | null;
+  tag?: string | null;
+  stock: number;
+  featured: "true" | "false";
+  createdAt: Date;
+  updatedAt: Date;
+}
 
+export interface Order {
+  _id?: ObjectId;
+  id?: number;
+  userId: string; // Using string for MongoDB ID or openId
+  userEmail?: string | null;
+  totalPrice: string;
+  status: "pending" | "confirmed" | "shipped" | "completed" | "cancelled" | "preorder";
+  paymentMethod: "mpesa" | "card" | "bank_transfer";
+  paymentStatus: "pending" | "processing" | "completed" | "failed";
+  mpesaReceiptNumber?: string | null;
+  checkoutRequestId?: string | null;
+  shippingCost: string;
+  discount: string;
+  notes?: string | null;
+  shippingAddressStreet?: string | null;
+  shippingAddressCity?: string | null;
+  shippingAddressPostalCode?: string | null;
+  shippingAddressCountry?: string | null;
+  shippingAddressPhone?: string | null;
+  billingAddressStreet?: string | null;
+  billingAddressCity?: string | null;
+  billingAddressPostalCode?: string | null;
+  billingAddressCountry?: string | null;
+  billingAddressPhone?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrderItem {
+  _id?: ObjectId;
+  orderId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: string;
+  customizationSize?: string | null;
+  customizationColor?: string | null;
+  customizationNotes?: string | null;
+}
+
+export interface CartItem {
+  _id?: ObjectId;
+  userId: string;
+  productId: string;
+  quantity: number;
+  customizationSize?: string | null;
+  customizationColor?: string | null;
+  customizationNotes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function upsertUser(user: Partial<User> & { openId: string }): Promise<void> {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
+  const users = db.collection<User>("users");
+
+  const updateSet: any = {
+    ...user,
+    updatedAt: new Date(),
+  };
+
+  if (!updateSet.role && user.openId === ENV.ownerOpenId) {
+    updateSet.role = "admin";
+  } else if (!updateSet.role) {
+    updateSet.role = "user";
   }
 
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
+  if (!updateSet.lastSignedIn) {
+    updateSet.lastSignedIn = new Date();
   }
+
+  await users.updateOne(
+    { openId: user.openId },
+    { 
+      $set: updateSet,
+      $setOnInsert: { createdAt: new Date() }
+    },
+    { upsert: true }
+  );
 }
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
+  const user = await db.collection<User>("users").findOne({ openId });
+  return user || undefined;
 }
 
 // Product queries
 export async function getAllProducts() {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(products);
+  return db.collection<Product>("products").find().toArray();
 }
 
-export async function getProductById(id: number) {
+export async function getProductById(id: string | number) {
   const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(products).where(eq(products.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const query = typeof id === "string" && ObjectId.isValid(id) 
+    ? { _id: new ObjectId(id) } 
+    : { id: Number(id) };
+  const product = await db.collection<Product>("products").findOne(query as any);
+  return product || undefined;
 }
 
-export async function createProduct(data: InsertProduct) {
+export async function createProduct(data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(products).values(data);
+  const result = await db.collection("products").insertOne({
+    ...data,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
   return result;
 }
 
-export async function updateProduct(id: number, data: Partial<InsertProduct>) {
+export async function updateProduct(id: string | number, data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(products).set(data).where(eq(products.id, id));
+  const query = typeof id === "string" && ObjectId.isValid(id) 
+    ? { _id: new ObjectId(id) } 
+    : { id: Number(id) };
+  return db.collection("products").updateOne(query as any, {
+    $set: { ...data, updatedAt: new Date() },
+  });
 }
 
-export async function deleteProduct(id: number) {
+export async function deleteProduct(id: string | number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(products).where(eq(products.id, id));
+  const query = typeof id === "string" && ObjectId.isValid(id) 
+    ? { _id: new ObjectId(id) } 
+    : { id: Number(id) };
+  return db.collection("products").deleteOne(query as any);
 }
 
 // Order queries
-export async function getOrdersByUserId(userId: number) {
+export async function getOrdersByUserId(userId: string | number) {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(orders).where(eq(orders.userId, userId));
+  return db.collection<Order>("orders").find({ userId: String(userId) }).toArray();
 }
 
-export async function getOrderById(id: number) {
+export async function getOrderById(id: string | number) {
   const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const query = typeof id === "string" && ObjectId.isValid(id) 
+    ? { _id: new ObjectId(id) } 
+    : { id: Number(id) };
+  const order = await db.collection<Order>("orders").findOne(query as any);
+  return order || undefined;
 }
 
 export async function getAllOrders() {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(orders);
+  return db.collection<Order>("orders").find().toArray();
 }
 
-export async function createOrder(data: InsertOrder) {
+export async function createOrder(data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(orders).values(data);
-  return result;
+  const result = await db.collection("orders").insertOne({
+    ...data,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  return result.insertedId;
 }
 
-export async function updateOrder(id: number, data: Partial<InsertOrder>) {
+export async function updateOrder(id: string | number, data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(orders).set(data).where(eq(orders.id, id));
+  const query = typeof id === "string" && ObjectId.isValid(id) 
+    ? { _id: new ObjectId(id) } 
+    : { id: Number(id) };
+  return db.collection("orders").updateOne(query as any, {
+    $set: { ...data, updatedAt: new Date() },
+  });
 }
 
 // Order items queries
-export async function getOrderItems(orderId: number) {
+export async function getOrderItems(orderId: string | number) {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  return db.collection<OrderItem>("orderItems").find({ orderId: String(orderId) }).toArray();
 }
 
-export async function createOrderItem(data: InsertOrderItem) {
+export async function createOrderItem(data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.insert(orderItems).values(data);
+  return db.collection("orderItems").insertOne(data);
 }
 
 // Cart queries
-export async function getCartItems(userId: number) {
+export async function getCartItems(userId: string | number) {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(cartItems).where(eq(cartItems.userId, userId));
+  return db.collection<CartItem>("cartItems").find({ userId: String(userId) }).toArray();
 }
 
-export async function addCartItem(data: InsertCartItem) {
+export async function addCartItem(data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.insert(cartItems).values(data);
+  return db.collection("cartItems").insertOne({
+    ...data,
+    userId: String(data.userId),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 }
 
-export async function updateCartItem(id: number, data: Partial<InsertCartItem>) {
+export async function updateCartItem(id: string, data: any) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(cartItems).set(data).where(eq(cartItems.id, id));
+  return db.collection("cartItems").updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { ...data, updatedAt: new Date() } }
+  );
 }
 
-export async function removeCartItem(id: number) {
+export async function removeCartItem(id: string) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(cartItems).where(eq(cartItems.id, id));
+  return db.collection("cartItems").deleteOne({ _id: new ObjectId(id) });
 }
 
-export async function clearUserCart(userId: number) {
+export async function clearUserCart(userId: string | number) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(cartItems).where(eq(cartItems.userId, userId));
+  return db.collection("cartItems").deleteMany({ userId: String(userId) });
 }
-
-// TODO: add additional feature queries here as your schema grows.

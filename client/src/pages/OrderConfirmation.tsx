@@ -10,10 +10,10 @@ export default function OrderConfirmation() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [showMpesaForm, setShowMpesaForm] = useState(false);
 
-  const orderId = params?.id ? parseInt(params.id) : 0;
+  const orderId = params?.id || "";
   const { data: order, isLoading } = trpc.orders.getOrderDetail.useQuery(
-    { orderId },
-    { enabled: orderId > 0 && isAuthenticated }
+    { orderId: orderId as any },
+    { enabled: !!orderId && isAuthenticated }
   );
 
   const initiateMpesaMutation = trpc.payments.initiateMpesa.useMutation();
@@ -73,8 +73,8 @@ export default function OrderConfirmation() {
         <div className="max-w-2xl mx-auto mb-8">
           <div className="text-center mb-8">
             <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Order Confirmed!</h1>
-            <p className="text-gray-600">Thank you for your purchase. Your order has been received.</p>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Preorder Received!</h1>
+            <p className="text-gray-600">Thank you for your preorder. We have received your request and will contact you soon.</p>
           </div>
 
           {/* Order Details */}
@@ -104,6 +104,8 @@ export default function OrderConfirmation() {
                     className={`px-3 py-1 rounded-full text-sm font-semibold ${
                       order.status === "pending"
                         ? "bg-yellow-100 text-yellow-800"
+                        : order.status === "preorder"
+                        ? "bg-purple-100 text-purple-800"
                         : order.status === "confirmed"
                         ? "bg-blue-100 text-blue-800"
                         : "bg-green-100 text-green-800"
@@ -157,8 +159,8 @@ export default function OrderConfirmation() {
               </div>
 
               <div className="card-body divide-y">
-                {order.items.map((item) => (
-                  <div key={item.id} className="py-4 flex items-center justify-between">
+                {order.items.map((item: any) => (
+                  <div key={item._id || item.id} className="py-4 flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-gray-900">{item.productName}</p>
                       <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>

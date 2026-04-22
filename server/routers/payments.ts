@@ -8,7 +8,7 @@ export const paymentsRouter = router({
   initiateMpesa: protectedProcedure
     .input(
       z.object({
-        orderId: z.number(),
+        orderId: z.union([z.string(), z.number()]),
         phoneNumber: z.string(),
         amount: z.number().positive(),
       })
@@ -20,7 +20,7 @@ export const paymentsRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         }
 
-        if (order.userId !== ctx.user.id) {
+        if (String(order.userId) !== String(ctx.user.id || ctx.user._id)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
         }
 
@@ -49,7 +49,7 @@ export const paymentsRouter = router({
   queryStatus: protectedProcedure
     .input(
       z.object({
-        orderId: z.number(),
+        orderId: z.union([z.string(), z.number()]),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -59,7 +59,7 @@ export const paymentsRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         }
 
-        if (order.userId !== ctx.user.id) {
+        if (String(order.userId) !== String(ctx.user.id || ctx.user._id)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
         }
 

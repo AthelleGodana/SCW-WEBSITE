@@ -40,15 +40,15 @@ export default function Orders() {
 
         {orders && orders.length > 0 ? (
           <div className="space-y-4">
-            {orders.map((order) => (
-              <Link key={order.id} href={`/order-confirmation/${order.id}`}>
+            {orders.map((order: any) => (
+              <Link key={order._id || order.id} href={`/order-confirmation/${order._id || order.id}`}>
                 <a className="card hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="card-body">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                       {/* Order ID */}
                       <div>
                         <p className="text-sm text-gray-600">Order ID</p>
-                        <p className="font-semibold text-lg">#{order.id}</p>
+                        <p className="font-semibold text-lg">#{(order._id || order.id).toString().slice(-8)}</p>
                       </div>
 
                       {/* Date */}
@@ -76,10 +76,12 @@ export default function Orders() {
                               className={`px-3 py-1 rounded-full text-xs font-semibold ${
                                 order.status === "pending"
                                   ? "bg-yellow-100 text-yellow-800"
+                                  : order.status === "preorder"
+                                  ? "bg-purple-100 text-purple-800"
                                   : order.status === "confirmed"
                                   ? "bg-blue-100 text-blue-800"
                                   : order.status === "shipped"
-                                  ? "bg-purple-100 text-purple-800"
+                                  ? "bg-blue-100 text-blue-800"
                                   : order.status === "completed"
                                   ? "bg-green-100 text-green-800"
                                   : "bg-red-100 text-red-800"

@@ -49,7 +49,7 @@ export const ordersRouter = router({
   }),
 
   getOrderDetail: protectedProcedure
-    .input(z.object({ orderId: z.number() }))
+    .input(z.object({ orderId: z.union([z.string(), z.number()]) }))
     .query(async ({ ctx, input }) => {
       try {
         const order = await getOrderById(input.orderId);
@@ -96,10 +96,10 @@ export const ordersRouter = router({
         }
 
         const order = await createOrder({
-          userId: ctx.user.id,
+          userId: String(ctx.user.id || ctx.user._id),
           userEmail: ctx.user.email,
           totalPrice: totalPrice.toString(),
-          status: "pending",
+          status: "preorder",
           paymentMethod: input.paymentMethod,
           paymentStatus: "pending",
           shippingAddressStreet: input.shippingAddressStreet,
@@ -114,14 +114,14 @@ export const ordersRouter = router({
           billingAddressPhone: input.billingAddressPhone,
         });
 
-        const orderId = (order as any).insertId || order;
+        const orderId = String(order);
 
         for (const cartItem of cartItems) {
           const product = await getProductById(cartItem.productId);
           if (product) {
             await createOrderItem({
-              orderId: orderId as number,
-              productId: cartItem.productId,
+              orderId: orderId,
+              productId: String(cartItem.productId || cartItem._id),
               productName: product.name,
               quantity: cartItem.quantity,
               price: product.price as unknown as string,
@@ -132,7 +132,7 @@ export const ordersRouter = router({
           }
         }
 
-        await clearUserCart(ctx.user.id);
+        await clearUserCart(String(ctx.user.id || ctx.user._id));
 
         return { orderId, totalPrice };
       } catch (error) {
@@ -155,8 +155,8 @@ export const ordersRouter = router({
   updateStatus: createAdminProcedure(protectedProcedure)
     .input(
       z.object({
-        orderId: z.number(),
-        status: z.enum(["pending", "confirmed", "shipped", "completed", "cancelled"]),
+        orderId: z.union([z.string(), z.number()]),
+        status: z.enum(["pending", "confirmed", "shipped", "completed", "cancelled", "preorder"]),
       })
     )
     .mutation(async ({ input }) => {
